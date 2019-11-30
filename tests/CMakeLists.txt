@@ -18,6 +18,8 @@ CMAKE_MINIMUM_REQUIRED (VERSION 3.1)
 
 MESSAGE(STATUS "Setting up tests")
 
+FIND_PACKAGE(Threads)
+
 # Create a target that we can use for 'make check'.
 ADD_CUSTOM_TARGET(check COMMAND ${CMAKE_CTEST_COMMAND})
 
@@ -33,7 +35,8 @@ FOREACH(_testfile ${_testfiles})
   # to ensure that there are no warnings in either the tests, or the
   # header files these tests #include.
   ADD_EXECUTABLE(${_testname} EXCLUDE_FROM_ALL ${_testfile})
-  TARGET_COMPILE_OPTIONS(${_testname} PRIVATE -Werror)
+  TARGET_COMPILE_OPTIONS(${_testname} PRIVATE "-Werror")
+  TARGET_LINK_LIBRARIES (${_testname} ${CMAKE_THREAD_LIBS_INIT})
 
   # Then specify what it means to run a test:
   # - execute the test and write the output to a .result file

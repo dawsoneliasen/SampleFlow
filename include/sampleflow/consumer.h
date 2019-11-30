@@ -22,6 +22,7 @@
 
 #include <list>
 #include <utility>
+#include <future>
 
 
 namespace SampleFlow
@@ -75,6 +76,8 @@ namespace SampleFlow
   class Consumer
   {
     public:
+      Consumer (const bool use_separate_task = true);
+
       /*
        * The destructor. It disconnects this consumer object from
        * all producers it was connected to.
@@ -122,6 +125,10 @@ namespace SampleFlow
                AuxiliaryData aux_data) = 0;
 
     private:
+      const bool use_separate_task;
+
+      std::future<void> background_task;
+
       /**
        * A list of connections created by calling connect_to_producer().
        * We store this list so that we can terminate the connection once
@@ -136,10 +143,34 @@ namespace SampleFlow
 
 
   template <typename InputType>
+  Consumer<InputType>::Consumer (const bool use_separate_task)
+    : use_separate_task (use_separate_task)
+  {}
+
+
+
+  template <typename InputType>
   Consumer<InputType>::~Consumer ()
   {
+	  // Disconnect from anything that could submit more samples
+	  // to the current class.
     for (auto &connection : connections_to_producers)
       connection.disconnect ();
+
+
+	  // Then wait for any still pending tasks to finish.
+    if (background_task.valid())
+      background_task.wait();
+
+    // PROBLEM: When we get to the wait() above, we're in the destructor
+    // of this class. This means that the destructor of the derived class
+    // has already run. So if there is still a task that hasn't been
+    // taken care of and that we're waiting for here, whenever the
+    // run-time system gets around to scheduling it, then it will try
+    // to run on an object of which only the base class is left. That's
+    // not likely going to work. In practice, the derived class destructor
+    // resets the vtable and the call to the `consume` function will run
+    // in an pure virtual function call.
   }
 
 
@@ -151,12 +182,48 @@ namespace SampleFlow
   {
     // Create a connection to a lambda function that in turn calls
     // the consume() member function of the current object.
-    connections_to_producers.push_back (
-      producer.connect_to_signal (
-        [&](InputType sample, AuxiliaryData aux_data)
-    {
-      this->consume (std::move(sample), std::move(aux_data));
-    }));
+    //
+    // If 'use_separate_task' was not set in the communicator,
+    // then the lambda function simply calls the 'consume()'
+    // function that derived classes need to implement.
+    if (use_separate_task == false)
+      {
+        connections_to_producers.push_back (
+          producer.connect_to_signal (
+            [&](InputType sample, AuxiliaryData aux_data)
+        {
+          this->consume (std::move(sample), std::move(aux_data));
+        }));
+      }
+    else
+      // On the other hand, if 'use_separate_task' was set in the constructor,
+      // then we create a lambda that when executed creates a task
+      // that can be executed whenever the run-time system of the compiler
+      // thinks is appropriate.
+      {
+        connections_to_producers.push_back (
+          producer.connect_to_signal (
+            [&](InputType sample, AuxiliaryData aux_data)
+        {
+          // Before we set up another task, make sure that any previous
+          // one has returned.
+          if (background_task.valid())
+            background_task.wait();
+
+          // Copy the sample and aux data sent in to a memory
+          // location inside the following lambda, so that
+          // they are available whenever the task is actually
+          // executed. This makes sure that we can exit whenever
+          // we want.
+          auto deferred_worker
+            = [=]()
+          {
+            this->consume (std::move(sample), std::move(aux_data));
+          };
+
+          background_task = std::async (std::launch::async, deferred_worker);
+        }));
+      }
   }
 
 
