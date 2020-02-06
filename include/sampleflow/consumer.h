@@ -394,7 +394,7 @@ namespace SampleFlow
               // If all connections have been severed since we actually
               // got here (via a connection, of course), we pretend that we
               // never received the sample.
-              if (connections_to_producers.size() > 0)
+              if (connections_to_producers.size() == 0)
                 return;
 
               // Next emplace the shared future object into the queue, in order
