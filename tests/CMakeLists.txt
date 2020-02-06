@@ -36,7 +36,7 @@ FOREACH(_testfile ${_testfiles})
   # header files these tests #include.
   ADD_EXECUTABLE(${_testname} EXCLUDE_FROM_ALL ${_testfile})
   TARGET_COMPILE_OPTIONS(${_testname} PRIVATE "-Werror")
-  TARGET_LINK_LIBRARIES (${_testname} ${CMAKE_THREAD_LIBS_INIT})
+  TARGET_LINK_LIBRARIES (${_testname} Threads::Threads)
 
   # Then specify what it means to run a test:
   # - execute the test and write the output to a .result file
